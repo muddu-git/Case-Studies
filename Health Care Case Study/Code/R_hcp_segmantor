@@ -1,0 +1,119 @@
+#Reading input
+input=read.csv("C:/Users/mudmoham/Documents/pr/health_care/data.csv",na.strings = c(""," ","NA"))
+
+#Deleting unnecessary variables
+data=subset(input,select= -c(Ignore1,Ignore2,Ignore3,Ignore4,Ignore5,Ignore6,ID,ID2))
+
+#Imputing Missing values by observation
+data$PRESUMED_DEAD_FLAG=as.numeric(data$PRESUMED_DEAD_FLAG)
+data$RX_Restriction_Indicator=as.numeric(data$RX_Restriction_Indicator)
+data$PRESUMED_DEAD_FLAG[is.na(data$PRESUMED_DEAD_FLAG)]=0
+#data$PRESUMED_DEAD_FLAG[data$PRESUMED_DEAD_FLAG==1]="Y"
+data$RX_Restriction_Indicator[is.na(data$RX_Restriction_Indicator)]=0
+#data$RX_Restriction_Indicator[data$RX_Restriction_Indicator==1]="Y"
+
+
+cols=c("GENDER_CODE","TOP","PE","PRESUMED_DEAD_FLAG","RX_Restriction_Indicator","YrsPractice")
+data[cols]=lapply(data[cols], as.factor)
+
+
+#Imputing Missing Values by Mean Method for numeric variables
+for(i in 1:ncol(data))
+{
+  if((class(data[,i])=="integer") | (class(data[,i])=="numeric"))
+  {
+    data[,i][is.na(data[,i])]=mean(data[,i],na.rm = T)
+  }
+}
+
+#Funtion to calculate mode
+Mode <- function(x) {
+  ux <- na.omit(unique(x) )
+  tab <- tabulate(match(x, ux)); ux[tab == max(tab) ]
+}
+
+#Imputing Missing Values by Mode Method for categorical variables
+for(i in 1:ncol(data))
+{
+  if(class(data[,i])=="factor")
+  {
+    data[,i][is.na(data[,i])]=Mode(data[,i])
+  }
+}
+
+for (i in 1:ncol(data))
+{
+  if(class(data[,i])=='factor')
+  {
+    data[,i]=factor(data[,i],labels = 1:length(levels(factor(data[,i]))))
+  }
+}
+
+
+#Outlier Analysis
+for (i in 1:ncol(data)) {
+  if(class(data[,i])=="numeric" | class(data[,i])=="integer" ){
+    if (i %in% c(1:13,19:23)){
+      data[,i][which(data[,i] %in% boxplot.stats(data[,i])$out)]=NA
+    }
+    }
+}
+
+for(i in 1:ncol(data))
+{
+  if((class(data[,i])=="integer") | (class(data[,i])=="numeric"))
+  {
+    data[,i][is.na(data[,i])]=mean(data[,i],na.rm = T)
+  }
+}
+
+#Feature Selection
+data=subset(data,select=-c(Division,Group_Name,Age,CompProd3_Rx,customer_id))
+
+#Feature Engineering
+data$product_Rx=data$MyProd1_Rx+data$MyProd2_Rx
+data$Comp_Product_Rx=data$CompProd1_Rx+data$CompProd2_Rx
+data=subset(data,select=-c(MyProd1_Rx,MyProd2_Rx,CompProd1_Rx,CompProd2_Rx))
+
+
+fact_columns=c("State","Primary_AD","Secondary","TOP","PE","SPECIAlITY")
+data[fact_columns]=lapply(data[fact_columns], as.numeric)
+
+cols=c("GENDER_CODE","PRESUMED_DEAD_FLAG","RX_Restriction_Indicator","YrsPractice")
+data[cols]=lapply(data[cols], as.numeric)
+
+
+#Feature Scaling
+for (i in 1:ncol(data)) 
+{
+  if(class(data[,i])=="numeric" | class(data[,i])=="integer")
+  {
+    data[,i]=(data[,i]-min(data[,i]))/(max(data[,i])-min(data[,i]))
+  } 
+}
+
+#Applying K-Means Model
+kmeans_model=kmeans(data,4,nstart = 25)
+summary(kmeans_model)
+input$Customer_Segments=kmeans_model$cluster
+output=input[c("customer_id","Customer_Segments")]
+output$Customer_Segments[output$Customer_Segments==1]="Super High"
+output$Customer_Segments[output$Customer_Segments==2]="High"
+output$Customer_Segments[output$Customer_Segments==3]="Medium"
+output$Customer_Segments[output$Customer_Segments==4]="Low"
+
+write.csv(output,"C:/Users/mudmoham/Documents/pr/health_care/R_output.csv",row.names = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
