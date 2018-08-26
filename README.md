@@ -1,1 +1,1 @@
-# Case-Studies
+Data Science Case Studies
