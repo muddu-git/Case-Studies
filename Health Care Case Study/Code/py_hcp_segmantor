@@ -1,0 +1,111 @@
+import os
+import pandas as pd
+import numpy as np
+#import seaborn as sns
+from fancyimpute import KNN
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.cluster import KMeans
+os.chdir("C:/Users/mudmoham/Documents/pr/health_care")
+data=pd.read_csv("data.csv")
+
+#Missing Value Analysis
+missing_val_df=pd.DataFrame(pd.isnull(data).sum()).reset_index()
+missing_val_df=missing_val_df.rename(columns={"index":"variables",0:"missing percent"})
+missing_val_df["missing percent"]=missing_val_df["missing percent"]/len(data)*100
+missing_val_df=missing_val_df.sort_values("missing percent",ascending=False).reset_index(drop=True)
+data=data.drop(["Ignore1","Ignore2","Ignore3","Ignore4","Ignore5","Ignore6","ID","ID2"],axis=1)
+data["PRESUMED_DEAD_FLAG"]=data["PRESUMED_DEAD_FLAG"].fillna("N")
+data["PRESUMED_DEAD_FLAG"]=data["PRESUMED_DEAD_FLAG"].replace("D","Y")
+data["RX_Restriction_Indicator"]=data["RX_Restriction_Indicator"].fillna("N")
+for i in range(data.shape[1]):
+	if(data.iloc[:,i].dtypes=="object"):
+		data.iloc[:,i]=pd.Categorical(data.iloc[:,i])
+		data.iloc[:,i]=data.iloc[:,i].cat.codes
+
+for col in data.columns:
+	data[col]=data[col].replace(-1,np.nan)
+
+#splitting the data to avoid memory error--knn imputation takes more time to run
+data1=data.iloc[0:20000,:]
+data2=data.iloc[20001:40000,:]
+data3=data.iloc[40001:60000,:]
+data4=data.iloc[60001:77246,:]
+
+data1=pd.DataFrame(KNN(k=7).complete(data1),columns=data1.columns)
+data2=pd.DataFrame(KNN(k=7).complete(data2),columns=data2.columns)
+data3=pd.DataFrame(KNN(k=7).complete(data3),columns=data3.columns)
+data4=pd.DataFrame(KNN(k=7).complete(data4),columns=data4.columns)
+
+cleaned_data=pd.concat([data1,data2,data3,data4],axis=0).reset_index(drop=True)
+
+for col in cleaned_data.columns:
+	cleaned_data[col]=cleaned_data[col].astype(int)
+
+cleaned_data[cleaned_data["customer_id"]==0]	
+#backup=cleaned_data
+#cleaned_data=backup
+
+#Outlier Analysis
+for col in cleaned_data.columns:
+	q75,q25=np.percentile(cleaned_data[col],[75,25])
+	iqr=q75-q25
+	minimum=q25-(iqr*1.5)
+	maximum=q25+(iqr*1.5)
+	cleaned_data[cleaned_data[col]<minimum]=np.nan
+	cleaned_data[cleaned_data[col]>maximum]=np.nan
+
+
+
+data1,data2,data3,data4=cleaned_data.iloc[0:20000,:],cleaned_data.iloc[20001:40000,:],cleaned_data.iloc[40001:60000,:],cleaned_data.iloc[60001:77246,:]
+
+data1=pd.DataFrame(KNN(k=5).complete(data1),columns=data1.columns)
+data2=pd.DataFrame(KNN(k=5).complete(data2),columns=data2.columns)
+data3=pd.DataFrame(KNN(k=5).complete(data3),columns=data3.columns)
+data4=pd.DataFrame(KNN(k=5).complete(data4),columns=data4.columns)
+
+cleaned_data=pd.concat([data1,data2,data3,data4],axis=0).reset_index(drop=True)
+
+for col in cleaned_data.columns:
+	cleaned_data[col]=cleaned_data[col].astype(int)
+	
+cleaned_data[cleaned_data["customer_id"]==0]
+
+backup1=cleaned_data
+#backup1.to_csv("output1.csv")
+
+#Feature Selection
+#sns.heatmap(cleaned_data.corr(),mask=np.zeros_like(cleaned_data.corr(),dtype=np.bool),cmap=sns.diverging_palette(220,10,as_cmap=True),square=True)
+cleaned_data=cleaned_data.drop(["Division","Group_Name","Age","CompProd3_Rx"],axis=1)
+
+#Feature Engineering
+cleaned_data["Product_Rx"]=data["MyProd1_Rx"]+data["MyProd2_Rx"]
+cleaned_data["Comp_Product_Rx"]=data["CompProd1_Rx"]+data["CompProd2_Rx"]
+cleaned_data=cleaned_data.drop(["MyProd1_Rx","MyProd2_Rx","CompProd1_Rx","CompProd2_Rx"],axis=1)
+cleaned_data["GENDER_CODE"]=cleaned_data["GENDER_CODE"].replace(0,1)
+
+#Feature Scaling
+cleaned_data=pd.DataFrame(MinMaxScaler().fit_transform(cleaned_data),columns=cleaned_data.columns)
+#cleaned_data=backup2
+cleaned_data=cleaned_data[cleaned_data["customer_id"]!=0]
+
+#Applying Kmeans model
+kmeans_model=KMeans(4).fit(cleaned_data)
+hcp_types=kmeans_model.labels_
+cleaned_data["hcp_types"]=kmeans_model.labels_
+cleaned_data["hcp_types"]=cleaned_data["hcp_types"].replace({0:"Super High",1:"High",2:"Medium",3:"Low"})
+
+#Writing Output
+output=pd.DataFrame()
+output["Customer Id"]=backup1[backup1["customer_id"]!=0]["customer_id"]
+output["Customer Segments"]=cleaned_data["hcp_types"]
+output.to_csv("py_output.csv",index=False)
+
+
+
+
+
+
+
+
+
+	
