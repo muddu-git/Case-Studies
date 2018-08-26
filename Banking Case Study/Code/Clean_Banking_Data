@@ -1,0 +1,110 @@
+#Importing Required Libraries
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
+from scipy.stats import mode
+
+account=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/account.txt",sep=";",parse_dates=["date"]) 
+clients=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/client.txt",sep=";",parse_dates=["birth_number"])
+
+#Feature Engineering-Adding Gender Column
+gender_list=[]
+for row in range(clients.shape[0]):
+    if int(clients["birth_number"][row][2:4])>50:
+        gender_list.append("Female")
+        if int(clients["birth_number"][row][2:4])-50 >=10:
+            clients["birth_number"][row]=str(19)+str(clients["birth_number"][row][0:2])+str(int(clients["birth_number"][row][2:4])-50)+str(clients["birth_number"][row][4:])
+        else:
+            clients["birth_number"][row]=str(19)+str(clients["birth_number"][row][0:2])+str(0)+str(int(clients["birth_number"][row][2:4])-50)+str(clients["birth_number"][row][4:])
+    else:
+        gender_list.append("Male")
+        clients["birth_number"][row]=str(19)+str(clients["birth_number"][row])
+
+clients["Gender"]=gender_list
+clients["birth_number"]=pd.to_datetime(clients["birth_number"])
+
+disposition=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/disp.txt",sep=";")
+loans=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/loan.txt",sep=";",parse_dates=["date"])
+demographics=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/district.txt",sep=";")
+
+#Imputing with mean
+demographics["A12"]=pd.to_numeric(demographics["A12"], errors='coerce')
+demographics["A15"]=pd.to_numeric(demographics["A15"], errors='coerce')
+demographics["A12"]=demographics["A12"].fillna(demographics["A12"].mean())
+demographics["A15"]=demographics["A15"].fillna(demographics["A15"].mean())
+
+#Feature Engineering
+demographics["Unemployment_Rate"]=demographics["A12"]+demographics["A13"]
+demographics["No of Crimes Committed"]=demographics["A15"]+demographics["A16"]
+demographics["No of Municipalties"]=demographics["A5"]+demographics["A6"]+demographics["A7"]+demographics["A8"]
+demographics=demographics.drop(["A12","A13","A15","A16","A5","A6","A7","A8"],axis=1)
+
+credit=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/card.txt",sep=";",parse_dates=["issued"])
+order=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/order.txt",sep=";")
+#Imputing Missing Values with Mode
+order["k_symbol"]=order["k_symbol"].replace(' ',mode(order["k_symbol"])[0][0])
+
+transactions=pd.read_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/banking_data/trans.txt",sep=";",parse_dates=["date"])
+
+#Replcing Missing Values with "Not Applicable"
+col=["operation","k_symbol","bank","account"]
+for i in col:
+    transactions[i]=transactions[i].fillna("Not Applicable")   
+#Replacing Missing Values with mode "SIPO" 
+transactions["k_symbol"]=transactions["k_symbol"].replace(' ',"SIPO")
+transactions["type"]=transactions["type"].replace("VYBER","VYDAJ")
+
+
+#Derived Table of Tansactions
+credit_trans=transactions[(transactions["type"]=="PRIJEM") & (transactions["k_symbol"]!="UVER")]
+debit_trans=transactions[(transactions["type"]=="VYDAJ") & (transactions["k_symbol"]!="UVER")]
+loan_trans=transactions[transactions["k_symbol"]=="UVER"]
+
+credit_trans=credit_trans.groupby(["account_id"],as_index=False)["amount","balance"].agg([np.sum,np.mean])
+credit_trans.columns=["Total Credited Amount","Credit Mean","Total Balance Amount","Average Credit Balance"]
+credit_trans=credit_trans.drop(["Credit Mean","Total Balance Amount"],axis=1)
+
+debit_trans=debit_trans.groupby(["account_id"],as_index=False)["amount","balance"].agg([np.sum,np.mean])
+debit_trans.columns=["Total Debited Amount","Debit Mean","Total Balance Amount","Average debit Balance"]
+debit_trans=debit_trans.drop(["Debit Mean","Total Balance Amount"],axis=1)
+
+loan_trans=loan_trans.groupby(["account_id"],as_index=False)["amount"].agg([np.sum])
+loan_trans.columns=["Total loan Payments"]
+
+
+trans_transformed=credit_trans.join(debit_trans)
+trans_transformed=trans_transformed.join(loan_trans)
+trans_transformed["Total loan Payments"]=trans_transformed["Total loan Payments"].fillna(0)
+trans_transformed=trans_transformed.reset_index()
+
+#Joining all Tables
+temp=pd.merge(account,disposition,on="account_id")
+temp=temp.rename(columns={"type":"Disposition_Type"})
+temp=pd.merge(temp,clients,on="client_id")
+temp=temp.rename(columns={"date":"Account Creation Date","district_id_y":"district_id"})
+temp=pd.merge(temp,loans,on="account_id")
+temp=temp.rename(columns={"date":"loan grant date","amount":"loan amount","duration":"loan duration","payments":"loan monthly payments"})
+temp=pd.merge(temp,credit,on="disp_id")
+temp=temp.rename(columns={"type":"card type","issued":"card issued date"})
+demographics=demographics.rename(columns={"A1":"district_id","A2":"district name","A3":"Region","A4":"no of inhabitants","A9":"no of cities","A10":"urban ratio","A11":"average salary","A14":"Enterprenuers per 1000"})
+temp=pd.merge(temp,demographics,on="district_id")
+order=order.rename(columns={"bank_to":"Recepient Bank","account_to":"Recepient Account","amount":"order debited amount","k_symbol":" order payment type"})
+temp=pd.merge(temp,order,on="account_id")
+banking_data=pd.merge(temp,trans_transformed,on="account_id")
+
+banking_data.to_csv("C:/Users/mudmoham/Documents/pr/Banking_Case_Study/output/cleaned_data.csv",index=False)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
